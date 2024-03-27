@@ -8,6 +8,9 @@ pipeline {
     
     environment {
         SCANNER_HOME = tool 'sonar-scanner'
+        AWS_ACCESS_KEY_ID = credentials("access_key")
+        AWS_SECRET_ACCESS_KEY = credentials("secret_key")
+        AWS_DEFAULT_REGION="us-east-1"
     }
 
     stages {
@@ -59,12 +62,33 @@ pipeline {
             }
         }
         
-        stage('Hello') {
+        stage('docker build') {
             steps {
-                echo 'Hello World'
+                sh "docker build -t hemaatyam/ekart-app:${BUILD_NUMBER} ."
             }
         }
         
+        
+        stage('trivy scan') {
+            steps {
+                sh "trivy image hemaatyam/ekart-app:${BUILD_NUMBER} > trivy-report.txt"
+            }
+        }
+        
+        stage('pushing image to dockerhub') {
+            steps {
+                withDockerRegistry(credentialsId: 'docker-cred', url: 'https://index.docker.io/v1/') {
+                    sh "docker push hemaatyam/ekart-app:${BUILD_NUMBER}"
+                }
+            }
+        }
+        
+        stage('deploy-to-k8s') {
+            steps {
+                sh "aws eks update-kubeconfig --name demo --region us-east-1"
+                sh "kubectl apply -f  . "
+            }
+        }
         
     }
 }
